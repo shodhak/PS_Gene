@@ -62,11 +62,85 @@ pan_genes_st <- na.omit(pan_genes_st)
 pan_genes_st <- pan_genes_st[-which(pan_genes_st$miscall==0),]
 #Remove the NT samples. These are also the ones for which pneumocat failed
 pan_genes_st <- pan_genes_st[-which(pan_genes_st$pneumocat.serotype == "Failed"),]
-
-#Import dataset for polysaccharide composition
-ps_composition <- read.csv("ps_composition.csv")
+#Remove the samples for which assigned serotype is NT
+pan_genes_st <- pan_genes_st[-which(pan_genes_st$assigned.serotype == "NT"),]
+#Convert assigned serotype column to a character datatype
+pan_genes_st$assigned.serotype <- as.character(pan_genes_st$assigned.serotype)
+#Fix the serotype names for "19A"
+pan_genes_st$assigned.serotype[which(pan_genes_st$pneumocat.serotype == "19A")] <- "19A"
+#Fix serotype for Pool_hung_H11
+pan_genes_st$assigned.serotype[which(pan_genes_st$corrected.well == "Pool_hung_H11")] <- "38"
+#Fix serotype for Pool_hung_F8
+pan_genes_st$assigned.serotype[which(pan_genes_st$corrected.well == "Pool_hung_F8")] <- "24B"
+#Fix serotype for Pool_hung_F8
+pan_genes_st$assigned.serotype[which(pan_genes_st$corrected.well == "Pool_hung_F8")] <- "24B"
 
 #Add ps composition to pan_genes dataset based on the serotype definitions from pneumocat
+#Import dataset for polysaccharide composition
+ps_composition <- read.csv("ps_composition.csv")
+#Combine pan_genes_st dataset with ps_composition
+pan_genes_st_ps <- merge(x = pan_genes_st, y = ps_composition, by.x = "assigned.serotype", by.y = "Serotype", all.x = TRUE)
+pan_genes_st_ps <- na.omit(pan_genes_st_ps)
+
+fdat2 <- pan_genes_st_ps[,5:ncol(pan_genes_st_ps)]
+#Make ps composition in fdat2 a separate dataset
+ps_fdat2 <- fdat2[,(ncol(fdat2)-23):ncol(fdat2)]
+#Assign remaining dataset to fdat2
+fdat2 <- fdat2[,1:(ncol(fdat2)-24)]
+#Logistic Regression for Acetyl
+reg.ace.nb1 <- vector("list", ncol(fdat2)) 
+aic.ace.nb1 <- 1: ncol(fdat2)
+pred.ace.nb1<-matrix(nrow = nrow(fdat2), ncol = ncol(fdat2) )
+for (i in 1:ncol(fdat2)){
+  if(nlevels(as.factor(fdat2[,i])) > 1){
+    reg.ace.nb1[[i]]<-glm(as.factor(ps_fdat2[,1]) ~ as.factor(fdat2[,i]), family = binomial)
+    aic.ace.nb1[[i]]<-reg.ace.nb1[[i]]$aic
+    pred.ace.nb1[,i]<-predict(reg.ace.nb1[[i]])
+  }
+  else{
+    #AIC values cannot be calculated since there is only one level
+    reg.ace.nb1[[i]]<-"1 level"
+    #Randomly assign value of 1000 since minimum vaue of aic will be used for computing weights (refer wgt)
+    aic.ace.nb1[[i]]<-1000
+    #Predicted value will be same as existing value
+    pred.ace.nb1[,i]<-fdat2[1,i]
+  }
+}
+#Compute weights for each position
+wgt_acetyl <- exp(-0.5*(aic.ace.nb1-min(aic.ace.nb1)))/sum(exp(-0.5*(aic.ace.nb1-min(aic.ace.nb1))))
+
+#The columns which had one level had constant values for weight.
+#Replace the constant values with 0 (for better visualization of higher weights in a plot)
+wgt1_acetyl <- wgt_acetyl
+wgt1_acetyl[wgt1_acetyl == wgt1_acetyl[1]] <- 0
+pos1 <- colnames(fdat2)
+#Make a dataframe containing positions and weights
+plot_data_ace <- data.frame(pos1,wgt1_acetyl) 
+names(plot_data_ace) <- c("Position","Weight")
+plot_data_ace$Product <- ps_gene$Product[ps_gene$Position %in% plot_data_ace$Position]
+
+#Write csv for plot_data to make a shinyapp for the plot (Refer to app.R)
+write.csv(plot_data_ace,"plot_data_acetyl.csv")
+
+#Plot weights with respect to position
+plot_data_ace$Position <- factor(plot_data_ace$Position, as.character(plot_data_ace$Position))
+ggplot(data=plot_data_ace, aes(x=plot_data_ace$Position, y=(plot_data_ace$Weight), group=1)) +
+  geom_line() +
+  theme(axis.text.x = element_text(angle=90, hjust=1, size = 5),panel.background = element_blank()) +
+  scale_x_discrete(breaks = plot_data_ace$Position[which(plot_data_ace$Weight!=0)]) +
+  labs(x = "Position", y = "Weight (adjusted)")
+
+#Magnify the effects
+#^0.005brings weight values closer to 1
+#^10 magnifies the effect
+#Plotly makes interactive plot
+plot_acetyl <- ggplot(data=plot_data_ace, aes(x=plot_data_ace$Position, y=(plot_data_ace$Weight^0.005)^10, group=1, text=plot_data_ace$Product)) +
+  geom_line() +theme(axis.text.x = element_text(angle=90, hjust=1, size = 5),panel.background = element_blank()) +
+  scale_x_discrete(breaks = plot_data_ace$Position[which(plot_data_ace$Weight!=0)]) +
+  labs(x = "Position", y = "Weight (adjusted)")
+ggplotly(plot_acetyl, tooltip = c("x","text"))
+
+
 
 #===================================================================================================================#
 
