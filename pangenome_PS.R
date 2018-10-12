@@ -79,21 +79,26 @@ pan_genes_st$assigned.serotype[which(pan_genes_st$corrected.well == "Pool_hung_F
 #Import dataset for polysaccharide composition
 ps_composition <- read.csv("ps_composition.csv")
 #Combine pan_genes_st dataset with ps_composition
-pan_genes_st_ps <- merge(x = pan_genes_st, y = ps_composition, by.x = "assigned.serotype", by.y = "Serotype", all.x = TRUE)
+#pan_genes_st_ps <- merge(x = pan_genes_st, y = ps_composition, by.x = "assigned.serotype", by.y = "Serotype", all.x = TRUE)
+pan_genes_st_ps <- merge(x = ps_composition, y = pan_genes_st, by.x = "Serotype", by.y = "assigned.serotype", all.x = TRUE)
+#Drop serotypes that are not available
 pan_genes_st_ps <- na.omit(pan_genes_st_ps)
 
-fdat2 <- pan_genes_st_ps[,5:ncol(pan_genes_st_ps)]
+fdat2 <- pan_genes_st_ps[,29:ncol(pan_genes_st_ps)]
 #Make ps composition in fdat2 a separate dataset
-ps_fdat2 <- fdat2[,(ncol(fdat2)-23):ncol(fdat2)]
-#Assign remaining dataset to fdat2
-fdat2 <- fdat2[,1:(ncol(fdat2)-24)]
+ps_fdat2 <- pan_genes_st_ps[,1:25]
+ps_fdat2[,2:ncol(ps_fdat2)] <- lapply(ps_fdat2[,2:ncol(ps_fdat2)], as.factor)
+
+#Assign levels 0 and 1 to the data frames
+levels(fdat2) <- c(0,1)
+levels(ps_fdat2) <- c(0,1)
 #Logistic Regression for Acetyl
 reg.ace.nb1 <- vector("list", ncol(fdat2)) 
 aic.ace.nb1 <- 1: ncol(fdat2)
 pred.ace.nb1<-matrix(nrow = nrow(fdat2), ncol = ncol(fdat2) )
 for (i in 1:ncol(fdat2)){
-  if(nlevels(as.factor(fdat2[,i])) > 1){
-    reg.ace.nb1[[i]]<-glm(as.factor(ps_fdat2[,1]) ~ as.factor(fdat2[,i]), family = binomial)
+  if(nlevels(fdat2[,i]) > 1){
+    reg.ace.nb1[[i]]<-glm(ps_fdat2$Fuc ~ fdat2[,i], family = binomial)
     aic.ace.nb1[[i]]<-reg.ace.nb1[[i]]$aic
     pred.ace.nb1[,i]<-predict(reg.ace.nb1[[i]])
   }
